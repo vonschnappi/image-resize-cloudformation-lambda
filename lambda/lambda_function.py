@@ -9,7 +9,7 @@ def lambda_handler(event, context):
     print('Starting exec')
     bucket_name = event['Records'][0]["s3"]['bucket']['name']
     key = event['Records'][0]["s3"]['object']['key']
-    file_name = key = os.path.splitext(key)[0]
+    file_name = os.path.splitext(key)[0]
     file_extension = os.path.splitext(key)[1].upper().replace('.', '')
     allowed_extensions = ['JPEG', 'JPG', 'PNG', 'GIF']
     if '_resized' in key:
