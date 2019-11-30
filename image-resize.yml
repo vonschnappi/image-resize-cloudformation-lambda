@@ -1,0 +1,226 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Mappings:
+  RegionMap:
+    eu-north-1:
+      "HVM64": "ami-073ea41ed65529242"
+    ap-south-1:
+      "HVM64": "ami-03df30097bba5a113"
+    eu-west-3:
+      "HVM64": "ami-03b4b78aae82b30f1"
+    eu-west-2:
+      "HVM64": "ami-00a1270ce1e007c27"
+    eu-west-1:
+      "HVM64": "ami-040ba9174949f6de4"
+    ap-northeast-2:
+      "HVM64": "ami-02b3330196502d247"
+    ap-northeast-1:
+      "HVM64": "ami-0064e711cbc7a825e"
+    sa-east-1:
+      "HVM64": "ami-04d39c16f166793dc"
+    ca-central-1:
+      "HVM64": "ami-007dbcbce3118978b"
+    ap-southeast-1:
+      "HVM64": "ami-00942d7cd4f3ca5c0"
+    ap-southeast-2:
+      "HVM64": "ami-03ed5bd63ba378bd8"
+    eu-central-1:
+      "HVM64": "ami-00aa4671cbf840d82"
+    us-east-1:
+      "HVM64": "ami-00dc79254d0461090"
+    us-east-2:
+      "HVM64": "ami-00bf61217e296b409"
+    us-west-1:
+      "HVM64": "ami-0245d318c6788de52"
+    us-west-2:
+      "HVM64": "ami-04b762b4289fba92b"
+
+Parameters:
+  ImageBucketName:
+    Type: String
+  LambdaBucketName:
+    Type: String
+  LambdaName:
+    Type: String
+  Repository:
+    Type: String
+  WorkingDirectory:
+    Type: String
+
+Resources:
+  LambdaS3Iam:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaToS3
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: 's3:*'
+                Resource: !Sub 'arn:aws:s3:::${ImageBucketName}/*'
+      Description: To allow lambda to write to S3
+      RoleName: LambdaToS3
+
+  EC2S3Iam:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+      - PolicyName: LambdaToS3
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: 's3:*'
+              Resource: !Sub 'arn:aws:s3:::${ImageBucketName}/*'
+      Description: To allow lambda to write to S3
+      RoleName: EC2ToS3
+
+  ImageResizeLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties: 
+      Code: 
+        S3Bucket: !Ref LambdaBucketName
+        S3Key: "function.zip"
+      Environment:
+        Variables: 
+          'bucket_name': !Ref ImageBucketName
+      FunctionName: 
+        Ref: LambdaName
+      Handler: lambda_function.lambda_handler
+      MemorySize: 256
+      Timeout: 10
+      Runtime: python3.7
+      Role: !GetAtt LambdaS3Iam.Arn
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Sub 'arn:aws:s3:::${ImageBucketName}'
+      FunctionName: !GetAtt
+        - ImageResizeLambdaFunction
+        - Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: s3.amazonaws.com
+
+  WebServer:
+    Type: AWS::EC2::Instance
+    Metadata: 
+      AWS::CloudFormation::Init:
+        config:
+          files:
+            /etc/systemd/system/app.service: 
+              content:
+                !Sub |
+                  [Unit]
+                  Description=app
+
+                  [Service]
+                  WorkingDirectory=/home/ec2-user/${WorkingDirectory}
+                  ExecStart=/usr/bin/node /home/ec2-user/${WorkingDirectory}/bin/www
+                  Environment=PATH=/usr/bin:/usr/local/bin
+                  Environment=NODE_ENV=production
+                  Environment=BUCKET=${ImageBucketName}
+                  Environment=PORT=80
+                  Restart=always
+
+                  [Install]
+                  WantedBy=multi-user.target
+              mode: "000644"
+              owner: "root"
+              group: "root" 
+          commands:
+            01_update_machine:
+              command: !Sub |
+                yum -y update
+            02_upgrade_machine:
+              command: !Sub |
+                yum -y upgrade
+            03_get_node:
+              command: !Sub |
+                curl -sL https://rpm.nodesource.com/setup_12.x | sudo -E bash -
+            04_install_node:
+              command: !Sub |
+                yum install -y nodejs
+            05_install_git:
+              command: !Sub |
+                yum install -y git
+
+    Properties:
+      IamInstanceProfile: !Ref InstanceProfile
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", HVM64]
+      InstanceType: t2.small
+      SubnetId: subnet-089ffc6c71d55cbda
+      KeyName: micro
+      SecurityGroupIds:
+        - Ref: WebServerSecurityGroup
+      UserData: 
+        Fn::Base64: 
+          !Sub |
+            #!/bin/bash -xe
+            yum update -y aws-cfn-bootstrap
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource WebServer --region ${AWS::Region}
+            cd /home/ec2-user/
+            git clone ${Repository}
+            sudo chown -R ec2-user ${WorkingDirectory}
+            cd "$(basename ${Repository} .git)"
+            npm install --save
+            sudo systemctl start app
+            sudo systemctl enable myapp
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource WebServer --region ${AWS::Region}
+
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'WEBDMZ'
+      SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/0
+        FromPort: '80'
+        IpProtocol: tcp
+        ToPort: '80'
+      - CidrIp: 0.0.0.0/0
+        FromPort: '22'
+        IpProtocol: tcp
+        ToPort: '22'
+      VpcId: vpc-0b4ce945f7314193e
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    DependsOn: EC2S3Iam
+    Properties: 
+      Roles: 
+        - EC2ToS3 
+
+  ImageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      BucketName: !Ref ImageBucketName
+      NotificationConfiguration: 
+          LambdaConfigurations: 
+            - Event: s3:ObjectCreated:*
+              Function: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaName}'
+    DependsOn: 
+      - ImageResizeLambdaFunction
+      - LambdaInvokePermission
