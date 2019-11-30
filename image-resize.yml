@@ -172,7 +172,7 @@ Resources:
       ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", HVM64]
       InstanceType: t2.small
       SubnetId: FILL IN YOUR SUBNET ID OR REFERNCE A SUBNET RESOURCE FROM THIS TEMPLATE
-      KeyName: micro
+      KeyName: SPECIFY YOUR SSH KEY TO SSH INTO THE MACHINE
       SecurityGroupIds:
         - Ref: WebServerSecurityGroup
       UserData: 
