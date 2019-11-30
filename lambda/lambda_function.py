@@ -38,7 +38,7 @@ def lambda_handler(event, context):
     buffer.seek(0)
 
     res = s3.put_object(Bucket=bucket_name, 
-                    Key=file_name + '_resized.' + file_extension.lower()),
+                    Key=file_name + '_resized.' + file_extension.lower(),
                     ACL='public-read',
                     Body=buffer)
     print(res)

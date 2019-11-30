@@ -171,7 +171,7 @@ Resources:
       IamInstanceProfile: !Ref InstanceProfile
       ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", HVM64]
       InstanceType: t2.small
-      SubnetId: subnet-089ffc6c71d55cbda
+      SubnetId: FILL IN YOUR SUBNET ID OR REFERNCE A SUBNET RESOURCE FROM THIS TEMPLATE
       KeyName: micro
       SecurityGroupIds:
         - Ref: WebServerSecurityGroup
@@ -203,7 +203,7 @@ Resources:
         FromPort: '22'
         IpProtocol: tcp
         ToPort: '22'
-      VpcId: vpc-0b4ce945f7314193e
+      VpcId: FILL IN YOUR VPC ID OR REFERNCE A VPC RESOURCE FROM THIS TEMPLATE
 
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile

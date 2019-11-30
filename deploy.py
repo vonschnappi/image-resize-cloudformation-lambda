@@ -63,7 +63,8 @@ def main():
     lambda_bucket_name = 'lambda-bucket-for-image-resize'
     img_bucket_name = 'bucket-for-resized-images' + str(uuid.uuid1())
     Lambda_name = 'image_resize'
-    repo = 'https://github.com/vonschnappi/upload-image-to-s3-web-server.git'
+    repo = 'YOUR-REPO-OF-THE-NODEJS-WEBSERVER'
+    #see https://github.com/vonschnappi/upload-image-to-s3-web-server
     work_dir = repo.split('/')[4].split('.')[0]
     zip_name = 'function.zip'
 
